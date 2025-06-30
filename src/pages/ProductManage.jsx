@@ -131,7 +131,7 @@ const ProductManage = () => {
 
   const handleDelete = async () => {
     try {
-      await api.delete(`/v1/products/${id}`);
+      await api.delete(`/products/${id}`);
       message.success('Producto eliminado');
       navigate('/inventario');
     } catch (err) {
