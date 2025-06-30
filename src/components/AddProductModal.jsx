@@ -1,14 +1,19 @@
-import React from 'react';
 import { Modal, Form, Input, message } from 'antd';
-import axios from 'axios';
+import { useAuth } from '../contexts/AuthContext';
+
+import api from '../lib/api'
 
 const AddProductModal = ({ visible, onClose, onSuccess }) => {
   const [form] = Form.useForm();
 
+  const { user } = useAuth();
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      await axios.post('http://localhost:4000/api/v1/products', values);
+      values.createdBy = user?.displayName;
+      values.lastUpdatedBy = user?.displayName;
+      await api.post('/products', values);
       message.success('Producto creado correctamente');
       onSuccess();
       form.resetFields();

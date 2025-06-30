@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Typography,
   Card,
@@ -8,10 +8,10 @@ import {
   List,
   Divider,
   Descriptions,
+  Popconfirm,
   Button,
   message,
 } from 'antd';
-import axios from 'axios';
 import {
   PieChart,
   Pie,
@@ -22,10 +22,20 @@ import {
   Bar,
   XAxis,
   YAxis,
+  Legend,
 } from 'recharts';
+import {
+  UploadOutlined,
+  DownloadOutlined,
+  DeleteOutlined,
+} from '@ant-design/icons';
+
+import UpdateStockModal from '../components/UpdateStockModal';
+import { useAuth } from '../contexts/AuthContext';
+
+import api from '../lib/api'
 
 const { Title } = Typography;
-
 const COLORS = ['#52c41a', '#f5222d'];
 
 const ProductManage = () => {
@@ -34,19 +44,24 @@ const ProductManage = () => {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // For visual editing of name and category (no backend update yet)
   const [isEditing, setIsEditing] = useState(false);
   const [editValues, setEditValues] = useState({ name: '', category: '' });
 
+  const [stockModalVisible, setStockModalVisible] = useState(false);
+  const [stockAction, setStockAction] = useState('');
+
+  const navigate = useNavigate();
+
+  const { user } = useAuth();
+
   useEffect(() => {
     fetchProduct();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const fetchProduct = async () => {
     try {
       setLoading(true);
-      const res = await axios.get(`http://localhost:4000/api/v1/products/${id}`);
+      const res = await api.get(`/products/${id}`);
       setProduct(res.data.product);
       setLogs(res.data.logs || []);
       setEditValues({
@@ -60,39 +75,68 @@ const ProductManage = () => {
     }
   };
 
-  // Calculate pieData and barData from logs
   const pieData = [
     {
       name: 'Añadido',
-      value: logs.filter((l) => l.action === 'added').reduce((a, b) => a + b.amount, 0),
+      value: logs
+        .filter((l) => l.action === 'added')
+        .reduce((acc, curr) => Number(acc) + Number(curr.amount), 0),
     },
     {
       name: 'Removido',
-      value: logs.filter((l) => l.action === 'removed').reduce((a, b) => a + b.amount, 0),
+      value: logs
+        .filter((l) => l.action === 'removed')
+        .reduce((acc, curr) => Number(acc) + Number(curr.amount), 0),
     },
   ];
 
-  const barData = logs.map((log) => ({
-    name: log.date,
-    amount: log.amount,
-  }));
+  const grouped = logs.reduce((acc, log) => {
+    const date = log.date;
+    if (!acc[date]) acc[date] = { date, added: 0, removed: 0 };
+    if (log.action === 'added') acc[date].added += log.amount;
+    else if (log.action === 'removed') acc[date].removed += log.amount;
+    return acc;
+  }, {});
+  const barData = Object.values(grouped);
 
-  // Handlers for editing
   const onEditClick = () => setIsEditing(true);
   const onCancelEdit = () => {
     setIsEditing(false);
     setEditValues({ name: product.name, category: product.category });
   };
 
-  const onSaveEdit = () => {
-    // Just visual update for now - no API call yet
-    setProduct((prev) => ({
-      ...prev,
-      name: editValues.name,
-      category: editValues.category,
-    }));
-    setIsEditing(false);
-    message.success('Cambios guardados (solo visual)');
+  const onSaveEdit = async () => {
+    try {
+      await api.put(`/products/${id}`, {
+        name: editValues.name,
+        category: editValues.category,
+        by: user?.displayName
+      });
+      message.success('Producto actualizado correctamente');
+      await fetchProduct();
+      setIsEditing(false);
+    } catch (error) {
+      message.error('Error al actualizar el producto');
+    }
+  };
+
+  const openStockModal = (action) => {
+    setStockAction(action);
+    setStockModalVisible(true);
+  };
+  const closeStockModal = () => {
+    setStockModalVisible(false);
+    setStockAction('');
+  };
+
+  const handleDelete = async () => {
+    try {
+      await api.delete(`/v1/products/${id}`);
+      message.success('Producto eliminado');
+      navigate('/inventario');
+    } catch (err) {
+      message.error('Error al eliminar el producto');
+    }
   };
 
   if (loading) return <div>Cargando...</div>;
@@ -144,11 +188,55 @@ const ProductManage = () => {
           <Descriptions.Item label="Última actualización por">{product.lastUpdatedBy}</Descriptions.Item>
         </Descriptions>
 
-        <div style={{ marginTop: 16 }}>
+        <div style={{ marginTop: 16, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {!isEditing ? (
-            <Button type="primary" onClick={onEditClick}>
-              Editar
-            </Button>
+            <>
+              <Button type="primary" onClick={onEditClick}>
+                Editar
+              </Button>
+              <Button
+                icon={<UploadOutlined />}
+                type="default"
+                style={{
+                  backgroundColor: '#52c41a',
+                  color: 'white',
+                  borderColor: '#52c41a',
+                }}
+                onClick={() => openStockModal('add')}
+              >
+                Añadir Stock
+              </Button>
+              <Button
+                icon={<DownloadOutlined />}
+                type="default"
+                style={{
+                  backgroundColor: '#fa8c16',
+                  color: 'white',
+                  borderColor: '#fa8c16',
+                }}
+                onClick={() => openStockModal('remove')}
+              >
+                Remover Stock
+              </Button>
+              <Popconfirm
+                title="¿Seguro que quieres eliminar este producto?"
+                onConfirm={() => handleDelete()}
+                okText="Sí"
+                cancelText="No"
+              >
+                <Button
+                  icon={<DeleteOutlined />}
+                  danger
+                  style={{
+                    backgroundColor: '#ff0000',
+                    color: 'white',
+                    borderColor: '#fa8c16',
+                  }}
+                >
+                  Eliminar
+                </Button>
+              </Popconfirm>
+            </>
           ) : (
             <>
               <Button type="primary" onClick={onSaveEdit} style={{ marginRight: 8 }}>
@@ -187,10 +275,12 @@ const ProductManage = () => {
           <Card title="Historial de Stock">
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={barData}>
-                <XAxis dataKey="name" />
+                <XAxis dataKey="date" />
                 <YAxis />
                 <Tooltip />
-                <Bar dataKey="amount" fill="#1890ff" />
+                <Legend />
+                <Bar dataKey="added" fill="#52c41a" name="Añadido" />
+                <Bar dataKey="removed" fill="#f5222d" name="Removido" />
               </BarChart>
             </ResponsiveContainer>
           </Card>
@@ -213,6 +303,18 @@ const ProductManage = () => {
           )}
         />
       </Card>
+
+      {/* Modal para actualizar stock (reutilizado) */}
+      <UpdateStockModal
+        product={product}
+        action={stockAction}
+        visible={stockModalVisible}
+        onClose={closeStockModal}
+        onSuccess={() => {
+          closeStockModal();
+          fetchProduct();
+        }}
+      />
     </div>
   );
 };

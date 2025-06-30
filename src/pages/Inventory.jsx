@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Typography,
   Table,
@@ -13,20 +13,23 @@ import {
   UploadOutlined,
   DownloadOutlined,
 } from '@ant-design/icons';
-import axios from 'axios';
+import * as XLSX from 'xlsx';
+
 import UpdateStockModal from '../components/UpdateStockModal';
 import AddProductModal from '../components/AddProductModal';
+
+import api from '../lib/api';
 
 const { Title } = Typography;
 const { Search } = Input;
 
-const Inventario = () => {
+const Inventory = () => {
   const [products, setProducts] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [addModalVisible, setAddModalVisible] = useState(false);
 
   const [stockModalVisible, setStockModalVisible] = useState(false);
-  const [stockAction, setStockAction] = useState(''); // 'add' or 'remove'
+  const [stockAction, setStockAction] = useState('');
   const [selectedProduct, setSelectedProduct] = useState(null);
 
   useEffect(() => {
@@ -35,7 +38,7 @@ const Inventario = () => {
 
   const fetchProducts = async () => {
     try {
-      const res = await axios.get('http://localhost:4000/api/v1/products');
+      const res = await api.get('/products');
       setProducts(res.data);
     } catch (err) {
       message.error('Error al cargar productos');
@@ -64,6 +67,53 @@ const Inventario = () => {
   const handleAddProductSuccess = () => {
     closeAddModal();
     fetchProducts();
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      message.loading({ content: 'Generando Excel...', key: 'export' });
+
+      const productsWithLogs = await Promise.all(
+        products.map(async (p) => {
+          const res = await api.get(`/products/${p.id}`);
+          return { ...p, logs: res.data.logs || [] };
+        })
+      );
+
+      // Hoja de productos
+      const productData = productsWithLogs.map((p) => ({
+        ID: p.id,
+        Nombre: p.name,
+        Categoría: p.category,
+        Stock: p.stock,
+        CreadoPor: p.createdBy,
+        UltimaActualizacionPor: p.lastUpdatedBy,
+      }));
+
+      // Hoja de logs
+      const logsData = productsWithLogs.flatMap((p) =>
+        p.logs.map((log) => ({
+          ProductoID: p.id,
+          Producto: p.name,
+          Acción: log.action,
+          Cantidad: log.amount,
+          Fecha: log.date,
+          Por: log.by,
+          Motivo: log.reason,
+        }))
+      );
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(productData), 'Productos');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(logsData), 'Logs');
+
+      XLSX.writeFile(wb, 'inventario.xlsx');
+
+      message.success({ content: 'Excel generado!', key: 'export' });
+    } catch (error) {
+      console.error(error);
+      message.error({ content: 'Error al generar Excel', key: 'export' });
+    }
   };
 
   const filteredProducts = products.filter((p) => {
@@ -170,6 +220,13 @@ const Inventario = () => {
         </Col>
         <Col>
           <Button
+            icon={<DownloadOutlined />}
+            style={{ marginRight: 8 }}
+            onClick={handleExportExcel}
+          >
+            Exportar Excel
+          </Button>
+          <Button
             type="primary"
             icon={<PlusOutlined />}
             style={{
@@ -209,4 +266,4 @@ const Inventario = () => {
   );
 };
 
-export default Inventario;
+export default Inventory;

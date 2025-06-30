@@ -1,17 +1,19 @@
-import React from 'react';
 import { Modal, Form, Input, message } from 'antd';
-import axios from 'axios';
 import { useWatch } from 'antd/es/form/Form';
+import { useAuth } from '../contexts/AuthContext';
+
+import api from '../lib/api'
 
 const UpdateStockModal = ({ product, action, visible, onClose, onSuccess }) => {
+  const { user } = useAuth();
   const [form] = Form.useForm();
   const watchedAmount = useWatch('amount', form) || 0;
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      const endpoint = `http://localhost:4000/api/v1/products/${product.id}/${action}-stock`;
-      await axios.post(endpoint, values);
+      values.by = user?.displayName
+      await api.post(`/products/${product.id}/${action}-stock`, values);
       message.success(
         action === 'add' ? 'Stock agregado correctamente' : 'Stock removido correctamente'
       );
