@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import Inventory from './pages/Inventory';
 import ProductManage from './pages/ProductManage';
 import Login from './pages/Login';
@@ -45,6 +45,7 @@ const App = () => {
                 </AuthGuard>
               }
             />
+            <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </Content>
       </Layout>
